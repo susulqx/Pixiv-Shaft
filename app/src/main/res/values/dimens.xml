@@ -45,4 +45,8 @@
     <dimen name="user_head_size_feeds">42dp</dimen>
     <dimen name="tab_layout_neg_height">-48dp</dimen>
     <dimen name="min_widget_size">44dp</dimen>
+
+    <!-- V3 详情页翻译按钮:视觉图标 25dp,可点击热区 48dp(Material 最小触摸目标,见 MNT-001)。 -->
+    <dimen name="v3_translate_icon">25dp</dimen>
+    <dimen name="v3_translate_touch_target">48dp</dimen>
 </resources>

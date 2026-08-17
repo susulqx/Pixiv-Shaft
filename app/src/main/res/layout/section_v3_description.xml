@@ -29,14 +29,22 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
-        <ImageView
+        <!-- 视觉 25dp 图标 + 48dp 可点击热区(Material 最小触摸目标,见 MNT-001) -->
+        <FrameLayout
             android:id="@+id/desc_translate"
-            android:layout_width="25dp"
-            android:layout_height="25dp"
+            android:layout_width="@dimen/v3_translate_touch_target"
+            android:layout_height="@dimen/v3_translate_touch_target"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/string_translate_caption"
-            android:src="@drawable/ic_baseline_translate_24"
-            app:tint="@color/v3_text_3" />
+            android:contentDescription="@string/string_translate_caption">
+
+            <ImageView
+                android:layout_width="@dimen/v3_translate_icon"
+                android:layout_height="@dimen/v3_translate_icon"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_baseline_translate_24"
+                app:tint="@color/v3_text_3" />
+        </FrameLayout>
     </LinearLayout>
 
     <org.sufficientlysecure.htmltextview.HtmlTextView

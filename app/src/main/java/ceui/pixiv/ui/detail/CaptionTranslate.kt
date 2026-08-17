@@ -66,11 +66,17 @@ fun Fragment.translateTitleAndCaption(title: String?, caption: String?) {
             return@launchSuspend
         }
         val placeholder = ctx.getString(R.string.no_info)
-        val message = ctx.getString(R.string.string_182) +
-            (translatedTitle.takeIf { it.isNotBlank() } ?: placeholder) +
-            TRANSLATED_MESSAGE_SEPARATOR +
-            ctx.getString(R.string.v3_translate_caption_label) +
-            (translatedCaption.takeIf { it.isNotBlank() } ?: placeholder)
+        val titlePart = ctx.getString(R.string.string_182) +
+            (translatedTitle.takeIf { it.isNotBlank() } ?: placeholder)
+        // 只翻标题(hero 区传 caption=null)时不拼「简介：」占位行——作品明确没有简介,
+        // 弹窗不该出现「简介：暂无信息」;有简介(desc 区调用)才拼简介行(见 COR-002)。
+        val message = if (c.isEmpty()) {
+            titlePart
+        } else {
+            titlePart + TRANSLATED_MESSAGE_SEPARATOR +
+                ctx.getString(R.string.v3_translate_caption_label) +
+                (translatedCaption.takeIf { it.isNotBlank() } ?: placeholder)
+        }
         showTranslatedDialog(ctx, message)
     }
 }

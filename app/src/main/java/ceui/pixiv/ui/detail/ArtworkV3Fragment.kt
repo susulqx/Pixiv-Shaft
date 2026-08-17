@@ -49,6 +49,7 @@ import ceui.lisa.core.Mapper
 import ceui.loxia.ObjectPool
 import ceui.loxia.ObjectType
 import ceui.loxia.combineLatest
+import ceui.loxia.hasCaption
 import ceui.loxia.requireNetworkStateManager
 import ceui.pixiv.chat.base.panel.PanelState
 import ceui.pixiv.feeds.FeedItem
@@ -275,7 +276,7 @@ class ArtworkV3Fragment : IllustFeedFragment(R.layout.fragment_artwork_v3) {
         // 顺带接住 caption 后台补拉的落地(见 ArtworkV3ViewModel.ensureTrustedCaption)。
         ObjectPool.get<IllustsBean>(illustId).observe(viewLifecycleOwner) { illust ->
             illust ?: return@observe
-            syncDescSection(illust.caption, illust.title)
+            syncDescSection(illust)
             attachMuteObserver(illust)
             val authorId = illust.user?.id?.toLong() ?: return@observe
             attachArtistFollowObserver(authorId)
@@ -558,13 +559,20 @@ class ArtworkV3Fragment : IllustFeedFragment(R.layout.fragment_artwork_v3) {
      * [onListReady] 把 itemAnimator 关掉了 —— 没有 itemAnimator 就不跑 SGLM 的 predictive
      * 预布局,也就绕开了 [ceui.lisa.helper.StaggeredManager] 注释里那个「fling + 插入同帧」的
      * AOSP 越界。谁要把动画开回来,先想清楚这里。
+     *
+     * COR-001: caption 后台补拉落池后,hero 条目仍持旧实例(空 caption),metaTranslate 可见性
+     * 是 bind 时按 [IllustsBean.hasCaption] 一次性读取的,不重建 hero 就不会重绑,导致信息区
+     * 翻译按钮与简介块翻译按钮并存。因此简介块补入的同时,把 hero 条目换成池里当前实例(见下方
+     * [FeedViewModel.updateItems]):实例变了 DiffUtil 重绑 → 按钮随新 caption 隐藏;hero 已持
+     * 非空 caption(按钮本就隐藏)时原样返回,不重绑,保持本方法「免费」语义。
      */
-    private fun syncDescSection(caption: String?, title: String?) {
+    private fun syncDescSection(illust: IllustsBean) {
         // 门槛只看 caption,和 [ArtworkV3FeedSource.buildArtworkHeaderItems] 的产出条件一致:
         // 放宽成「标题非空也补入」的话,无简介的作品会从这条后台补入的路径长出一个空简介块。
-        if (caption.isNullOrEmpty()) return
-        val descCaption = caption
-        val descTitle = title.orEmpty()
+        // 判定收敛到 [IllustsBean.hasCaption],三处共用(见 MNT-002)。
+        if (!illust.hasCaption) return
+        val descCaption = illust.caption.orEmpty()
+        val descTitle = illust.title.orEmpty()
         feedViewModel.mutateItems { items ->
             val at = items.indexOfFirst { it is ArtworkDescItem }
             if (at >= 0) {
@@ -586,6 +594,10 @@ class ArtworkV3Fragment : IllustFeedFragment(R.layout.fragment_artwork_v3) {
                             items.subList(anchor, items.size)
                 }
             }
+        }
+        // COR-001: 简介块补入的同时重建 hero 条目,详见函数 KDoc。
+        feedViewModel.updateItems<ArtworkHeroItem> { item ->
+            if (item.illust.hasCaption) item else ArtworkHeroItem(illust)
         }
     }
 

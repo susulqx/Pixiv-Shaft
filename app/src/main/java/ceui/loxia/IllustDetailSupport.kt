@@ -48,6 +48,13 @@ fun IllustsBean.hasTrustedCaption(): Boolean {
 }
 
 /**
+ * 作品是否有简介。详情页三处共用同一判定(hero 区翻译按钮显隐 / header 简介块产出 /
+ * syncDescSection 后台补入门槛),避免各处独立编码同一业务条件导致漂移(见 COR-001 / MNT-002)。
+ */
+val IllustsBean.hasCaption: Boolean
+    get() = !caption.isNullOrEmpty()
+
+/**
  * 回 v1/illust/detail 拉完整版,整体覆盖(isFullVersion)进 ObjectPool 并返回。
  * app-api 判作品不可见时走网页 ajax 兜底(#592);已删 / 兜底也拿不到 / 网络失败返回
  * null —— 此时不覆盖,保留池里已有数据,由调用方降级处理。
