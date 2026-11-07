@@ -303,7 +303,8 @@ class ClientManager {
                 // fall back to the local DB quickly instead of hanging ~10s.
                 .connectTimeout(6, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(8, TimeUnit.SECONDS)
+                // 与下面拦截器打在请求上的 Cronet 总 deadline 同一来源：两处各写一个 8 迟早走散。
+                .readTimeout(PIXSHAFT_READ_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
                 .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
                 // PixShaft Auth V2 is independent from Pixiv OAuth. The application
