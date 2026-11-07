@@ -35,6 +35,44 @@ public class HttpDns implements Dns {
             "210.140.139.131",
     };
 
+    /**
+     * Pixiv API 域名只认 Cloudflare 的这两个 /13（104.16–104.23 与 172.64–172.71）：
+     * {@link CronetInterceptor#CF_IP_PRIMARY} 与实测的正解都落在里面。
+     */
+    static boolean isCloudflareIp(InetAddress address) {
+        byte[] b = address.getAddress();
+        if (b.length != 4) {
+            return false;
+        }
+        int second = b[1] & 0xFF;
+        return (b[0] == 104 && second >= 16 && second <= 23)
+                || (b[0] == (byte) 172 && second >= 64 && second <= 71);
+    }
+
+    /** 图片服务器仍是旧 Pixiv 基础设施，实测全部落在 210.140.139.0/24。 */
+    static boolean isPixivImageIp(InetAddress address) {
+        byte[] b = address.getAddress();
+        return b.length == 4
+                && b[0] == (byte) 210 && b[1] == (byte) 140 && b[2] == (byte) 139;
+    }
+
+    /**
+     * DoH 答案是否可信。墙内的 DoH（实测 223.5.5.5）对 pixiv 域名会返回**污染但有值**的答案
+     * —— 阿里把 app-api 解到 104.244.43.248、把 i.pximg.net 解到 108.160.169.55。这类答案
+     * 一旦进缓存，{@link #lookup(String)} 永远走不到硬编码兜底，比解析失败更难排查。
+     *
+     * <p>只校验我们自己认得的域名族；不认识的 host 原样放行，免得替别人的域名做主。
+     */
+    static boolean isTrustedAnswer(String hostname, InetAddress address) {
+        if (hostname.endsWith("pximg.net")) {
+            return isPixivImageIp(address);
+        }
+        if (hostname.endsWith("pixiv.net")) {
+            return isCloudflareIp(address);
+        }
+        return true;
+    }
+
     private final Map<String, List<InetAddress>> resolvedHosts = new ConcurrentHashMap<>();
     private static volatile HttpDns sHttpDns = null;
     private List<InetAddress> fallbackApiAddresses;
@@ -162,13 +200,24 @@ public class HttpDns implements Dns {
                             CloudFlareDNSResponse body = response.body();
                             if (body != null && !Common.isEmpty(body.getAnswer())) {
                                 List<InetAddress> addresses = new ArrayList<>();
+                                List<String> rejected = new ArrayList<>();
                                 for (CloudFlareDNSResponse.DNSAnswer answer : body.getAnswer()) {
                                     try {
                                         if (answer.getType() == 1) {
-                                            addresses.add(InetAddress.getByName(answer.getData()));
+                                            InetAddress address = InetAddress.getByName(answer.getData());
+                                            if (isTrustedAnswer(hostname, address)) {
+                                                addresses.add(address);
+                                            } else {
+                                                rejected.add(answer.getData());
+                                            }
                                         }
                                     } catch (Exception ignored) {
                                     }
+                                }
+                                if (!rejected.isEmpty()) {
+                                    // 有值但落在别的网段 = 被污染。记下来，别让它在缓存里冒充正解。
+                                    Common.showLog("HttpDns rejected polluted answer for " + hostname
+                                            + " via " + endpoint + ": " + rejected);
                                 }
                                 if (!addresses.isEmpty()) {
                                     resolvedHosts.put(hostname, addresses);
@@ -177,8 +226,8 @@ public class HttpDns implements Dns {
                                     return;
                                 }
                             }
-                            Common.showLog("HttpDns empty answer for " + hostname + " via " + endpoint
-                                    + ", will use fallback IPs");
+                            Common.showLog("HttpDns empty or untrusted answer for " + hostname + " via "
+                                    + endpoint + ", will use fallback IPs");
                         }
 
                         @Override
