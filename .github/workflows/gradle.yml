@@ -49,7 +49,7 @@ jobs:
           distribution: 'adopt'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v5.0.2
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -342,7 +342,7 @@ jobs:
           distribution: 'adopt'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v5.0.2
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
