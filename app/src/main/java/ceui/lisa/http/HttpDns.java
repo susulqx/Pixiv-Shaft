@@ -9,17 +9,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import ceui.lisa.activities.Shaft;
 import ceui.lisa.utils.Common;
+import ceui.lisa.utils.Settings;
 import okhttp3.Dns;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
 public class HttpDns implements Dns {
-
-    private static final String[] DOH_ENDPOINTS = {
-            CloudFlareDNSService.Companion.getCLOUDFLARE_DOH_POINT(),
-            CloudFlareDNSService.Companion.getDNSSB_DOH_POINT(),
-    };
 
     private static final String[] DOMAINS = {
             "app-api.pixiv.net",
@@ -61,7 +57,7 @@ public class HttpDns implements Dns {
         }
         if (isSecureDnsEnabled()) {
             for (String domain : DOMAINS) {
-                resolveViaDoH(domain, 0);
+                resolveViaDoH(domain);
             }
         }
     }
@@ -87,7 +83,7 @@ public class HttpDns implements Dns {
         instance.resolvedHosts.clear();
         if (isSecureDnsEnabled()) {
             for (String domain : DOMAINS) {
-                instance.resolveViaDoH(domain, 0);
+                instance.resolveViaDoH(domain);
             }
         }
     }
@@ -96,46 +92,104 @@ public class HttpDns implements Dns {
         return Shaft.sSettings != null && Shaft.sSettings.isUseSecureDns();
     }
 
-    private void resolveViaDoH(String hostname, int endpointIndex) {
-        if (endpointIndex >= DOH_ENDPOINTS.length) {
-            Common.showLog("HttpDns all DoH failed for " + hostname + ", will use fallback IPs");
+    /**
+     * 当前设置对应的 DoH 端点，{@code null} 表示不启用 DoH。
+     *
+     * <p>每个档位只对应**一个**端点：用户选哪个就走哪个，不做按序回落 ——
+     * 回落会让「我选了 Cloudflare」在不经意间变成走 DNS.SB，这比解析失败更难排查。
+     * 失败时 {@link #lookup(String)} 会落到下面的硬编码兜底 IP。
+     */
+    private static String currentEndpoint() {
+        if (Shaft.sSettings == null) {
+            return null;
+        }
+        switch (Shaft.sSettings.getDohMode()) {
+            case Settings.DOH_MODE_CLOUDFLARE:
+                return CloudFlareDNSService.Companion.getCLOUDFLARE_DOH_POINT();
+            case Settings.DOH_MODE_DNSSB:
+                return CloudFlareDNSService.Companion.getDNSSB_DOH_POINT();
+            case Settings.DOH_MODE_TENCENT:
+                return CloudFlareDNSService.Companion.getTENCENT_DOH_POINT();
+            case Settings.DOH_MODE_CUSTOM:
+                // 非法地址一律当作关闭，避免每次请求都在一个拼不出的 URL 上超时 3 秒。
+                return normalizeEndpoint(Shaft.sSettings.getCustomDohUrl());
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * 校验并规整自定义 DoH 端点。只接受 http(s) 绝对地址；裸域名补 https://。
+     *
+     * <p>与 {@link AppApiProxyInterceptor#normalizeBase(String)} 同款取舍，但**不去掉结尾斜杠**：
+     * /dns-query 这类路径是 DoH 端点的组成部分，不能被当成多余的尾巴吃掉。
+     */
+    public static String normalizeEndpoint(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String url = raw.trim();
+        if (url.isEmpty()) {
+            return null;
+        }
+        if (!url.contains("://")) {
+            url = "https://" + url;
+        }
+        String lower = url.toLowerCase();
+        if (!lower.startsWith("https://") && !lower.startsWith("http://")) {
+            return null;
+        }
+        // 带 query / fragment 的地址不是 DoH 端点，直接拒绝。
+        if (url.indexOf('?') >= 0 || url.indexOf('#') >= 0) {
+            return null;
+        }
+        return url;
+    }
+
+    private void resolveViaDoH(String hostname) {
+        String endpoint = currentEndpoint();
+        if (endpoint == null) {
+            Common.showLog("HttpDns no DoH endpoint for " + hostname + ", will use fallback IPs");
             return;
         }
         try {
-            CloudFlareDNSService service = CloudFlareDNSService.Companion.invoke(DOH_ENDPOINTS[endpointIndex]);
-            service.query(hostname, "A").enqueue(new Callback<CloudFlareDNSResponse>() {
-                @Override
-                public void onResponse(Call<CloudFlareDNSResponse> call, Response<CloudFlareDNSResponse> response) {
-                    CloudFlareDNSResponse body = response.body();
-                    if (body != null && !Common.isEmpty(body.getAnswer())) {
-                        List<InetAddress> addresses = new ArrayList<>();
-                        for (CloudFlareDNSResponse.DNSAnswer answer : body.getAnswer()) {
-                            try {
-                                if (answer.getType() == 1) {
-                                    addresses.add(InetAddress.getByName(answer.getData()));
+            CloudFlareDNSService.Companion.invoke()
+                    .query(endpoint, hostname, "A")
+                    .enqueue(new Callback<CloudFlareDNSResponse>() {
+                        @Override
+                        public void onResponse(Call<CloudFlareDNSResponse> call,
+                                               Response<CloudFlareDNSResponse> response) {
+                            CloudFlareDNSResponse body = response.body();
+                            if (body != null && !Common.isEmpty(body.getAnswer())) {
+                                List<InetAddress> addresses = new ArrayList<>();
+                                for (CloudFlareDNSResponse.DNSAnswer answer : body.getAnswer()) {
+                                    try {
+                                        if (answer.getType() == 1) {
+                                            addresses.add(InetAddress.getByName(answer.getData()));
+                                        }
+                                    } catch (Exception ignored) {
+                                    }
                                 }
-                            } catch (Exception ignored) {
+                                if (!addresses.isEmpty()) {
+                                    resolvedHosts.put(hostname, addresses);
+                                    Common.showLog("HttpDns resolved " + hostname + " -> " + addresses
+                                            + " via " + endpoint);
+                                    return;
+                                }
                             }
+                            Common.showLog("HttpDns empty answer for " + hostname + " via " + endpoint
+                                    + ", will use fallback IPs");
                         }
-                        if (!addresses.isEmpty()) {
-                            resolvedHosts.put(hostname, addresses);
-                            Common.showLog("HttpDns resolved " + hostname + " -> " + addresses);
-                        } else {
-                            resolveViaDoH(hostname, endpointIndex + 1);
-                        }
-                    } else {
-                        resolveViaDoH(hostname, endpointIndex + 1);
-                    }
-                }
 
-                @Override
-                public void onFailure(Call<CloudFlareDNSResponse> call, Throwable t) {
-                    Common.showLog("HttpDns DoH failed for " + hostname + ": " + t.getMessage());
-                    resolveViaDoH(hostname, endpointIndex + 1);
-                }
-            });
+                        @Override
+                        public void onFailure(Call<CloudFlareDNSResponse> call, Throwable t) {
+                            Common.showLog("HttpDns DoH failed for " + hostname + " via " + endpoint
+                                    + ": " + t.getMessage());
+                        }
+                    });
         } catch (Exception e) {
-            resolveViaDoH(hostname, endpointIndex + 1);
+            Common.showLog("HttpDns DoH threw for " + hostname + " via " + endpoint
+                    + ": " + e.getMessage());
         }
     }
 

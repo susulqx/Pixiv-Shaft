@@ -33,6 +33,7 @@ import ceui.lisa.http.ImageReadTimeout;
 import ceui.lisa.utils.Common;
 import ceui.lisa.utils.Local;
 import ceui.lisa.utils.Params;
+import ceui.lisa.utils.Settings;
 import ceui.pixiv.api.Client;
 import ceui.pixiv.ui.navigation.TemplateRoute;
 import ceui.pixiv.ui.settings.GithubProxyDialog;
@@ -91,18 +92,9 @@ public class FragmentSettingsNetwork extends SettingsPageFragment<FragmentSettin
         });
         baseBind.directConnectRela.setOnClickListener(v -> baseBind.autoDns.performClick());
 
-        //安全 DNS（DoH） issue #616
-        baseBind.useSecureDns.setChecked(Shaft.sSettings.isUseSecureDns());
-        baseBind.useSecureDns.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                Shaft.sSettings.setUseSecureDns(isChecked);
-                Common.showToast(getString(R.string.string_428), 2);
-                Local.setSettings(Shaft.sSettings);
-                HttpDns.invalidate();
-            }
-        });
-        baseBind.useSecureDnsRela.setOnClickListener(v -> baseBind.useSecureDns.performClick());
+        //安全 DNS（DoH） issue #616：五选一（关 / Cloudflare / DNS.SB / 腾讯 / 自定义）
+        refreshSecureDnsSummary();
+        baseBind.useSecureDnsRela.setOnClickListener(v -> showSecureDnsPicker());
 
         //图片读超时：图片加载 + 下载共用的读超时，分直连 / 非直连两种量程（默认 = 该模式上界）。
         refreshReadTimeoutSummary();
@@ -149,6 +141,95 @@ public class FragmentSettingsNetwork extends SettingsPageFragment<FragmentSettin
         });
         baseBind.showOriginalPreviewImageRela.setOnClickListener(v ->
                 baseBind.showOriginalPreviewImage.performClick());
+    }
+
+    // ── 安全 DNS（DoH，issue #616） ──────────────────────────────────────
+    // 五档各自对应**一个**端点，不做按序回落：节点由用户自己挑。写盘后立即 invalidate()
+    // 重新预热 —— HttpDns 是单实例，Glide / 下载共用的 client 已经持有它。
+
+    private static final int DOH_MODE_CUSTOM = Settings.DOH_MODE_CUSTOM;
+
+    private void refreshSecureDnsSummary() {
+        baseBind.useSecureDnsValue.setText(secureDnsModeLabel(Shaft.sSettings.getDohMode()));
+    }
+
+    private String secureDnsModeLabel(int mode) {
+        switch (mode) {
+            case Settings.DOH_MODE_CLOUDFLARE:
+                return getString(R.string.doh_mode_cloudflare);
+            case Settings.DOH_MODE_DNSSB:
+                return getString(R.string.doh_mode_dnssb);
+            case Settings.DOH_MODE_TENCENT:
+                return getString(R.string.doh_mode_tencent);
+            case Settings.DOH_MODE_CUSTOM: {
+                String url = Shaft.sSettings.getCustomDohUrl();
+                return TextUtils.isEmpty(url) ? getString(R.string.doh_mode_custom) : url;
+            }
+            case Settings.DOH_MODE_OFF:
+            default:
+                return getString(R.string.doh_mode_off);
+        }
+    }
+
+    private void showSecureDnsPicker() {
+        // 顺序必须与 Settings.DOH_MODE_* 的取值一致（index == mode 值）。
+        String[] items = {
+                getString(R.string.doh_mode_off),
+                getString(R.string.doh_mode_cloudflare),
+                getString(R.string.doh_mode_dnssb),
+                getString(R.string.doh_mode_tencent),
+                getString(R.string.doh_mode_custom),
+        };
+        int current = Shaft.sSettings.getDohMode();
+        if (current < 0 || current >= items.length) {
+            current = Settings.DOH_MODE_OFF;
+        }
+        new WitDialog.CheckableDialogBuilder(mContext)
+                .setCheckedIndex(current)
+                .addItems(items, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                        if (which == DOH_MODE_CUSTOM) {
+                            promptCustomDohUrl();
+                        } else {
+                            applyDohMode(which);
+                        }
+                    }
+                })
+                .create()
+                .show();
+    }
+
+    private void promptCustomDohUrl() {
+        final WitDialog.EditTextDialogBuilder builder = new WitDialog.EditTextDialogBuilder(mContext);
+        builder.setTitle(R.string.doh_mode_custom)
+                .setPlaceholder(getString(R.string.doh_custom_hint))
+                .setDefaultText(Shaft.sSettings.getCustomDohUrl())
+                .setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI)
+                .addAction(getString(R.string.string_142), (dialog, index) -> dialog.dismiss())
+                .addAction(getString(R.string.sure), (dialog, index) -> {
+                    CharSequence text = builder.getEditText().getText();
+                    String url = text == null ? "" : text.toString().trim();
+                    String normalized = HttpDns.normalizeEndpoint(url);
+                    if (normalized == null) {
+                        Common.showToast(getString(R.string.doh_custom_invalid));
+                        return;
+                    }
+                    Shaft.sSettings.setCustomDohUrl(normalized);
+                    applyDohMode(DOH_MODE_CUSTOM);
+                    dialog.dismiss();
+                })
+                .create()
+                .show();
+    }
+
+    private void applyDohMode(int mode) {
+        Shaft.sSettings.setDohMode(mode);
+        Local.setSettings(Shaft.sSettings);
+        refreshSecureDnsSummary();
+        // 不用重启：HttpDns 是单实例，清缓存后按新端点重新预热即生效。
+        HttpDns.invalidate();
     }
 
     // ── 图片加速代理（issue #865） ──────────────────────────────────────

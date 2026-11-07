@@ -173,7 +173,15 @@
     <string name="open_direct_connection">开启直连(自行代理或在墙外，可以关闭)</string>
     <string name="see_pixiv_ez">详见 Notsfsssf/Pix-EzViewer</string>
     <string name="use_secure_dns_title">安全 DNS（DoH）</string>
-    <string name="use_secure_dns_summary">通过 Cloudflare DoH 解析 Pixiv 域名；本地 DNS 已可信时可关闭</string>
+    <string name="use_secure_dns_summary">用所选 DoH 解析 Pixiv 域名；本地 DNS 已可信时可关闭</string>
+    <!-- 安全 DNS 五档（issue #616 后续）：每档一个端点，不按序回落 -->
+    <string name="doh_mode_off">关闭（走系统 DNS）</string>
+    <string name="doh_mode_cloudflare">Cloudflare (1.0.0.1)</string>
+    <string name="doh_mode_dnssb">DNS.SB (185.222.222.222)</string>
+    <string name="doh_mode_tencent">腾讯 DNSPod (1.12.12.12)</string>
+    <string name="doh_mode_custom">自定义 DoH</string>
+    <string name="doh_custom_hint">https://your.doh/dns-query</string>
+    <string name="doh_custom_invalid">DoH 地址无效：需为 http(s) 完整地址，且不能带 query 或 #fragment</string>
     <string name="show_original_image">图片详情展示原图</string>
     <string name="delete_star_illust">动态过滤已收藏</string>
     <string name="filter_rank_bookmarked">排行榜过滤已收藏</string>

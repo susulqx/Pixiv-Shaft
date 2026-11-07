@@ -164,7 +164,14 @@
     <string name="open_direct_connection">Bypass GFW</string>
     <string name="see_pixiv_ez">See Notsfsssf / Pix-EzViewer</string>
     <string name="use_secure_dns_title">Secure DNS (DoH)</string>
-    <string name="use_secure_dns_summary">Resolve Pixiv hosts via Cloudflare DoH; turn off if your local DNS is already trusted</string>
+    <string name="use_secure_dns_summary">Resolve Pixiv hosts via the selected DoH; turn off if your local DNS is already trusted</string>
+    <string name="doh_mode_off">Off (system DNS)</string>
+    <string name="doh_mode_cloudflare">Cloudflare (1.0.0.1)</string>
+    <string name="doh_mode_dnssb">DNS.SB (185.222.222.222)</string>
+    <string name="doh_mode_tencent">Tencent DNSPod (1.12.12.12)</string>
+    <string name="doh_mode_custom">Custom DoH</string>
+    <string name="doh_custom_hint">https://your.doh/dns-query</string>
+    <string name="doh_custom_invalid">Invalid DoH URL: needs a full http(s) address without query or #fragment</string>
     <string name="show_original_image">Use original image</string>
     <string name="delete_star_illust">Hide bookmarked works in following feed</string>
     <string name="filter_rank_bookmarked">Filter bookmarked works in rankings</string>

@@ -247,7 +247,24 @@ public class Settings {
     //是否启用 DoH（安全 DNS）解析。关闭时直接走系统 DNS / 内置兜底 IP，
     //适合本地已是可信 DNS 的场景。issue #616
     //默认 true，与历史行为保持一致（升级用户不会被静默关闭 DoH）
+    //**仅做旧备份/降级兼容**：新代码只读 dohMode，本字段由 migrateLegacySecureDns 回填。
     private boolean useSecureDns = true;
+
+    //安全 DNS（DoH）解析器选择，取代上面那个布尔开关。issue #616 的后续：
+    //0=关闭 1=Cloudflare 2=DNS.SB 3=腾讯 4=自定义。与 imageHostMode 同款整数枚举，
+    //每个选项是**单端点**（不再按序回落，由用户自己选）。
+    public static final int DOH_MODE_OFF = 0;
+    public static final int DOH_MODE_CLOUDFLARE = 1;
+    public static final int DOH_MODE_DNSSB = 2;
+    public static final int DOH_MODE_TENCENT = 3;
+    public static final int DOH_MODE_CUSTOM = 4;
+
+    //字段默认值必须留在 OFF：旧备份 JSON 里没有 dohMode，Gson 会保留下面的默认值 ——
+    //若这里写 CLOUDFLARE，用户当年明确关掉 DoH 的选择就会被默认值吃掉（迁移方法无从分辨）。
+    //全新安装同样从 OFF 起步，再由 migrateLegacySecureDns 借旧开关（默认 true）推导出 CLOUDFLARE。
+    private int dohMode = DOH_MODE_OFF;
+    //自定义 DoH 端点（完整 URL，含 /dns-query 之类的路径）。仅 dohMode==DOH_MODE_CUSTOM 时使用。
+    private String customDohUrl = "";
 
     private boolean relatedIllustNoLimit = true;
 
@@ -1074,12 +1091,25 @@ public class Settings {
         this.directConnect = directConnect;
     }
 
+    //保留旧 API 名供诊断页等处读取：DoH 是否启用 == 不是「关闭」档。
     public boolean isUseSecureDns() {
-        return useSecureDns;
+        return dohMode != DOH_MODE_OFF;
     }
 
-    public void setUseSecureDns(boolean useSecureDns) {
-        this.useSecureDns = useSecureDns;
+    public int getDohMode() {
+        return dohMode;
+    }
+
+    public void setDohMode(int dohMode) {
+        this.dohMode = dohMode;
+    }
+
+    public String getCustomDohUrl() {
+        return customDohUrl;
+    }
+
+    public void setCustomDohUrl(String customDohUrl) {
+        this.customDohUrl = customDohUrl;
     }
 
     public boolean isMainViewR18() {
@@ -2178,6 +2208,33 @@ public class Settings {
             }
         }
         settings.toastDownloadResult = settings.getMutedDownloadToasts().isEmpty();
+    }
+
+    /**
+     * 旧版设置/备份/云端还原迁移：把「安全 DNS（DoH）」布尔开关升级成五选一（{@link #getDohMode()}）。
+     *
+     * <p>旧 JSON 没有 dohMode，反序列化后落到 {@link #DOH_MODE_OFF}。此时若旧开关当年是开的
+     * （{@code useSecureDns == true}，也是旧字段的默认值），按历史行为映射到
+     * {@link #DOH_MODE_CLOUDFLARE}（旧 {@code DOH_ENDPOINTS} 的首选端点）；关的就留在关闭档。
+     *
+     * <p>反向回填 {@code useSecureDns = (dohMode != OFF)}：既让旧版降级读到一个方向一致的开关，
+     * 也让下次装载时「新版用户明确选了关闭」不会被再推导回 Cloudflare —— 那时旧开关已被写成
+     * false。与 {@link #migrateLegacyDoubleTapZoom(Settings)} 同一套「新字段为准、旧字段回填」的做法。
+     */
+    public static void migrateLegacySecureDns(Settings settings) {
+        if (settings == null) {
+            return;
+        }
+        int mode = settings.dohMode;
+        if (mode < DOH_MODE_OFF || mode > DOH_MODE_CUSTOM) {
+            mode = DOH_MODE_OFF;
+        }
+        if (mode == DOH_MODE_OFF && settings.useSecureDns) {
+            // 旧版 JSON 没有新字段：旧开关开着就是当年生效的 Cloudflare DoH。
+            mode = DOH_MODE_CLOUDFLARE;
+        }
+        settings.dohMode = mode;
+        settings.useSecureDns = mode != DOH_MODE_OFF;
     }
 
     // 插画V3详情页：下载按钮是否在左（true=左下载右收藏，false=左收藏右下载）

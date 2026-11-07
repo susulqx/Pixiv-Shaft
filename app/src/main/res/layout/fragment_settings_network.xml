@@ -83,7 +83,12 @@
                     style="@style/M3SetRow"
                     android:background="@drawable/wit_row_mid">
 
-                    <LinearLayout style="@style/M3SetTexts">
+                    <!-- 标题列用 layout_toStartOf 锚到右侧值：值可能是「腾讯 DNSPod」这类
+                         较长的档位名，写死 marginEnd 会把它截断。同 read_timeout_rela。 -->
+                    <LinearLayout
+                        style="@style/M3SetTexts"
+                        android:layout_toStartOf="@id/use_secure_dns_value"
+                        android:layout_marginEnd="12dp">
 
                         <TextView
                             android:id="@+id/use_secure_dns_title"
@@ -95,9 +100,9 @@
                             android:text="@string/use_secure_dns_summary" />
                     </LinearLayout>
 
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/use_secure_dns"
-                        style="@style/M3SetSwitch" />
+                    <TextView
+                        android:id="@+id/use_secure_dns_value"
+                        style="@style/M3SetValue" />
 
                 </RelativeLayout>
 
