@@ -1,5 +1,7 @@
 package ceui.pixiv.auth
 
+import ceui.lisa.activities.Shaft
+import ceui.lisa.http.CronetInterceptor
 import ceui.pixiv.api.ClientManager
 import ceui.pixiv.safe.auth.AuthSession
 import ceui.pixiv.shaftapi.ShaftHmac
@@ -117,6 +119,25 @@ internal object AuthNetwork {
                                 .header("X-Shaft-Sign", ShaftHmac.signHex(raw))
                                 .build()
                         )
+                    }
+                }
+                // Cronet 只认自己的总 deadline，不吃上面的 connect/read/write；这条线上最慢的是
+                // refreshSession，15 秒是它的读超时，也是本次请求该等到的上限。
+                .addInterceptor { chain ->
+                    chain.proceed(
+                        chain.request().newBuilder()
+                            .tag(
+                                CronetInterceptor.TimeoutTag::class.java,
+                                CronetInterceptor.timeoutTag(TimeUnit.SECONDS.toMillis(15L)),
+                            )
+                            .build()
+                    )
+                }
+                // 直连开启时同样的 SNI 阻断也落在 pixshaft.com / api.pixshaft.com 上，
+                // 走 QUIC 才到得了（见 ClientManager.createFirstPartyService 的说明）。
+                .apply {
+                    if (Shaft.sSettings?.isDirectConnect == true) {
+                        CronetInterceptor.installOn(this, Shaft.getContext())
                     }
                 }
                 .build()

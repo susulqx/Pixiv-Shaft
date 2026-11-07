@@ -956,7 +956,7 @@ class NetworkTestViewModel : ViewModel() {
      * 为目标构建与线上同源的 OkHttpClient —— 测什么路径就用 app 真实连这个域名时的那套
      * （见 [Client] 的 createAPPAPI / createPixshaftService 与 Shaft 图片 client）：
      *   · APP_API：H2+H1；直连开启时挂 [CronetInterceptor]（请求转 QUIC，绕 SNI 阻断）。
-     *   · PIXSHAFT：H2+H1 + 系统 DNS/TLS，和线上 pixshaft client 一致。
+     *   · PIXSHAFT：H2+H1；直连开启时同样挂 [CronetInterceptor]（该域名 TCP+TLS 亦被 SNI 阻断）。
      *   · IMAGE：直连开启时无 SNI（[RubySSLSocketFactory]）+ 信任所有证书 + 关主机名校验 + 强制 HTTP/1.1。
      * 连接池 0 空闲 → 每次调用都重新握手；默认用 [pinnedDns] 把域名钉到本次选定的 IP；
      * 未钉 IP（fake-ip / 代理 / Cronet 绕过）时用线上同一个 [IPv4OnlyDns] 过滤污染的 IPv6
@@ -999,6 +999,9 @@ class NetworkTestViewModel : ViewModel() {
             }
             TargetKind.PIXSHAFT -> {
                 builder.protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
+                // pixshaft.com 的 TCP+TLS 同样会被 SNI 阻断，线上 client 已改为直连时走 Cronet，
+                // 诊断页要测同一条链路，否则会稳定报「不可达」而线上其实是好的。
+                if (direct) addCronet(builder)
             }
             TargetKind.WEB_API -> {
                 // 镜像 createWebAPIService：H1 + Web 头 + 直连 Cronet。
@@ -1020,7 +1023,9 @@ class NetworkTestViewModel : ViewModel() {
             if (direct && !ImageHostManager.requiresStandardClient()) strRes(R.string.network_test_path_no_sni)
             else strRes(R.string.network_test_path_standard_tls)
         }
-        TargetKind.PIXSHAFT -> strRes(R.string.network_test_path_standard_tls)
+        TargetKind.PIXSHAFT ->
+            if (direct) strRes(R.string.network_test_path_cronet)
+            else strRes(R.string.network_test_path_standard_tls)
         else -> if (direct) strRes(R.string.network_test_path_cronet) else strRes(R.string.network_test_path_standard_tls)
     }
 

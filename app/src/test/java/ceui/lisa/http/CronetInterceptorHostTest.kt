@@ -18,10 +18,18 @@ class CronetInterceptorHostTest {
     }
 
     @Test
-    fun `pixshaft proxies and lookalike domains stay on OkHttp`() {
-        assertFalse(CronetInterceptor.shouldInterceptHost("pixshaft.com"))
+    fun `first-party backend is direct connected too`() {
+        assertTrue(CronetInterceptor.shouldInterceptHost("pixshaft.com"))
+        assertTrue(CronetInterceptor.shouldInterceptHost("API.PIXSHAFT.COM"))
+    }
+
+    @Test
+    fun `storage bucket proxies and lookalike domains stay on OkHttp`() {
+        // media.pixshaft.com is a Tencent COS bucket with no HTTP/3 — it must fall through.
+        assertFalse(CronetInterceptor.shouldInterceptHost("media.pixshaft.com"))
         assertFalse(CronetInterceptor.shouldInterceptHost("proxy.example.com"))
         assertFalse(CronetInterceptor.shouldInterceptHost("app-api.pixiv.net.example.com"))
+        assertFalse(CronetInterceptor.shouldInterceptHost("pixshaft.com.example.com"))
         assertFalse(CronetInterceptor.shouldInterceptHost(null))
     }
 

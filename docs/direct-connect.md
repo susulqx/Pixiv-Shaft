@@ -83,6 +83,13 @@ Pixiv-Shaft 采用 **QUIC + No-SNI TLS 双通道** 策略，分别处理 API 请
 Retrofit → OkHttp → CronetInterceptor → Cronet Engine → QUIC/UDP → Cloudflare
 ```
 
+**同一条通道也承载自家后端。** `pixshaft.com` / `api.pixshaft.com`（浏览历史、账号、广场、贴纸、云翻译）虽然是我们自己的服务器，但在同一网络下同样躲不开 SNI 封锁：实测当 ClientHello 里带这两个名字时，TCP+TLS 握手会被立刻 RST；而换成 UDP 443 的 HTTP/3 打同一批 Cloudflare IP，稳定返回 200。所以它们和 Pixiv 域名一起进了 `CronetInterceptor` 的白名单，也一起进了 `HostResolverRules` 的 IP 钉死列表。
+
+两个例外值得记住：
+
+- **`media.pixshaft.com` 不走 Cronet**。它是腾讯云 COS 存储桶，没有 HTTP/3，TCP+TLS 也不受上述封锁影响，保持普通 OkHttp 路径。
+- **Cronet 的总 deadline 是自己写死的 30 秒**，OkHttp 的 connect/read/write 超时对它不起作用。首方后端原本靠 6/8 秒快失败来回退本地数据库，因此每个请求都带一个 `CronetInterceptor.TimeoutTag` 覆盖自己的上限（普通路由 8 秒、云翻译 120 秒），见 `ClientManager.createFirstPartyService`。
+
 ### 通道二：图片加载 — No-SNI TLS
 
 **问题**：图片服务器（i.pximg.net）仍在 Pixiv 原有基础设施上，不支持 QUIC。
@@ -106,7 +113,7 @@ Glide → OkHttp → RubySSLSocketFactory(无SNI) → HttpDns(自定义IP) → T
 | 纯 DoH + 自定义 DNS | DNS 可以绕过，但 TCP+TLS 握手包里只要还带 pixiv SNI 就会被 RST |
 | 修改 TLS 指纹 / Cipher Suite | 防火墙按 SNI 内容封锁，与 TLS 指纹无关 |
 | 域前置 / SNI 操纵 | Cloudflare 边缘校验 SNI 与 HTTP Host 一致，经典 domain fronting 在 Cloudflare 上不可用 |
-| ECH（加密 ClientHello）| Pixiv 的 Cloudflare 配置未启用 ECH |
+| ECH（加密 ClientHello）| Pixiv 的域名根本没有发布 ECH 配置；Cloudflare 全网的 ECH 外层名统一是 `cloudflare-ech.com`，而这个名字本身就在 SNI 封锁名单里 —— 换了等于没换 |
 | 备用端口（8443 等）| TCP 层 SNI 检测是全端口的，换端口无效 |
 | 中继/代理服务器 | 依赖第三方服务，可用性不可控 |
 

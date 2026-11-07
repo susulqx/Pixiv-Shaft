@@ -1,5 +1,7 @@
 package ceui.pixiv.shaftapi
 
+import ceui.lisa.activities.Shaft
+import ceui.lisa.http.CronetInterceptor
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -9,12 +11,41 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 
-/** Process-wide pools. Auth and media metadata share TLS connections, never interceptors. */
+/** Process-wide pools. Auth and media metadata share TLS connections; only the API pool may carry the
+ * direct-connect interceptor (see [apiClient]). */
 internal object MediaHttpTransport {
-    val apiClient: OkHttpClient =
-        OkHttpClient.Builder().eventListenerFactory(MediaNetworkTiming.factory).build()
+    /**
+     * api.pixshaft.com rides Cronet when direct connect is on: its TCP+TLS ClientHello is reset on
+     * this network while HTTP/3 to the same Cloudflare IP answers 200. Everything derived from this
+     * client (history, auth, plaza, stickers, [prewarm]) inherits that path.
+     *
+     * storageClient deliberately does not: it only serves media.pixshaft.com, a Tencent COS bucket
+     * with no HTTP/3, and media.pixshaft.com is not in the interceptor's host allowlist anyway.
+     */
+    @Volatile private var api: OkHttpClient = buildApiClient()
+    val apiClient: OkHttpClient get() = api
     val storageClient: OkHttpClient =
         OkHttpClient.Builder().eventListenerFactory(MediaNetworkTiming.factory).build()
+
+    private fun buildApiClient(): OkHttpClient =
+        OkHttpClient.Builder()
+            .eventListenerFactory(MediaNetworkTiming.factory)
+            .apply {
+                if (Shaft.sSettings?.isDirectConnect == true) {
+                    CronetInterceptor.installOn(this, Shaft.getContext())
+                }
+            }
+            .build()
+
+    /**
+     * 直连开关切换后必须重建：拦截器只在这一刻挂载，不重建就要重启 App 才生效
+     * （与 [ceui.pixiv.api.Client.reset] 同款诉求）。派生出本 client 的 history/auth/plaza/
+     * sticker 客户端都在用点上取 [apiClient]，所以换掉这里等于全部换掉。
+     */
+    fun reset() {
+        api = buildApiClient()
+    }
+
     private val warmingApi = AtomicBoolean()
     private val warmingStorage = AtomicBoolean()
 

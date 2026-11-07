@@ -60,6 +60,12 @@ object Client {
         // comic 同理:它也 applyDirectConnect,漏了这行切完直连开关漫画页还是走旧客户端。
         _comicApi = null
         _fanboxApi = null
+        // pixshaft 系列在直连下也走 Cronet，它们派生自 MediaHttpTransport.apiClient：
+        // 先换底座，再把三个持有旧底座的 Retrofit 服务置空，下次取用时重建。
+        MediaHttpTransport.reset()
+        _pixshaft = null
+        _plazaAPI = null
+        _mediaAPI = null
     }
 
     @Volatile private var _fanboxApi: FanboxApi? = null
@@ -110,23 +116,40 @@ object Client {
         clientManager.createMoonAPIService(MoonAPI::class.java)
     }
 
-    // pixshaft-api (browse history). Real public domain + Let's Encrypt cert,
-    // so plain system DNS/TLS — no custom Dns like moonAPI needs.
-    val pixshaft: PixshaftApi by lazy {
-        clientManager.createPixshaftService(PixshaftApi::class.java)
-    }
+    // pixshaft-api (browse history)。真实公网域名 + Let's Encrypt 证书；但它的 TCP+TLS
+    // 会被 SNI 阻断，直连开关打开时改由 Cronet 走 QUIC（见 ClientManager.createFirstPartyService）。
+    // 因此这三处和上面几个一样是可重建字段，不能再用 by lazy —— 否则切完直连开关
+    // 历史/广场/媒体还挂在旧客户端上，要重启 App 才吃到新路径。
+    @Volatile private var _pixshaft: PixshaftApi? = null
+
+    val pixshaft: PixshaftApi
+        get() = _pixshaft
+            ?: synchronized(this) {
+                _pixshaft ?: clientManager.createPixshaftService(PixshaftApi::class.java)
+                    .also { _pixshaft = it }
+            }
 
     /**
      * Media metadata and short-lived COS upload/download authorisation. Object bytes do not pass
      * through the Tokyo API.
      */
-    val plazaAPI: ceui.pixiv.plaza.PlazaApi by lazy {
-        clientManager.createMediaService(ceui.pixiv.plaza.PlazaApi::class.java)
-    }
+    @Volatile private var _plazaAPI: ceui.pixiv.plaza.PlazaApi? = null
 
-    val mediaAPI: MediaApi by lazy {
-        clientManager.createMediaService(MediaApi::class.java)
-    }
+    val plazaAPI: ceui.pixiv.plaza.PlazaApi
+        get() = _plazaAPI
+            ?: synchronized(this) {
+                _plazaAPI ?: clientManager.createMediaService(ceui.pixiv.plaza.PlazaApi::class.java)
+                    .also { _plazaAPI = it }
+            }
+
+    @Volatile private var _mediaAPI: MediaApi? = null
+
+    val mediaAPI: MediaApi
+        get() = _mediaAPI
+            ?: synchronized(this) {
+                _mediaAPI ?: clientManager.createMediaService(MediaApi::class.java)
+                    .also { _mediaAPI = it }
+            }
 }
 
 class ClientManager {
@@ -150,6 +173,9 @@ class ClientManager {
         // 服务端 TRANSLATE_UPSTREAM_TIMEOUT_MS 默认 90s，这里比它多留 30s，让「上游超时」
         // 以服务端的 504 到达，而不是客户端先断线变成一句含糊的 timeout。
         const val PIXSHAFT_TRANSLATE_READ_TIMEOUT_SECONDS = 120
+
+        // 首方后端其余路由的读超时。走 Cronet 时它同时是总 deadline（见 createFirstPartyService）。
+        const val PIXSHAFT_READ_TIMEOUT_SECONDS = 8
 
         // pixiv COMIC。和 app-api 同一套 OAuth token,只是换个 host。
         const val COMIC_API_HOST = "https://comic.pixiv.net/"
@@ -323,23 +349,41 @@ class ClientManager {
                 }
                 // 云翻译是这条线上唯一「等一次 LLM 往返」的路由：上游一次要 10 秒上下，思考型
                 // 模型更久，8 秒的读超时会把每一次都掐死。只对这一条路径放宽，别的路由照旧快失败。
+                //
+                // 顺带把「这条路由该等多久」告诉 Cronet：直连模式下本 client 也走
+                // [CronetInterceptor]，而它只认自己的总 deadline，不吃上面的 connect/read/write。
+                // 不 tag 的话一次挂住的 /v1/history 会在回退本地库之前先干等 30 秒。
                 .addInterceptor { chain ->
                     val req = chain.request()
-                    if (req.url.encodedPath.endsWith("/v1/account/translate")) {
-                        chain
-                            .withReadTimeout(
-                                PIXSHAFT_TRANSLATE_READ_TIMEOUT_SECONDS,
-                                TimeUnit.SECONDS,
-                            )
-                            .proceed(req)
+                    val translate = req.url.encodedPath.endsWith("/v1/account/translate")
+                    val totalSeconds = if (translate) PIXSHAFT_TRANSLATE_READ_TIMEOUT_SECONDS
+                    else PIXSHAFT_READ_TIMEOUT_SECONDS
+                    val tagged = req.newBuilder()
+                        .tag(
+                            CronetInterceptor.TimeoutTag::class.java,
+                            CronetInterceptor.timeoutTag(
+                                TimeUnit.SECONDS.toMillis(totalSeconds.toLong()),
+                            ),
+                        )
+                        .build()
+                    if (translate) {
+                        chain.withReadTimeout(totalSeconds, TimeUnit.SECONDS).proceed(tagged)
                     } else {
-                        chain.proceed(req)
+                        chain.proceed(tagged)
                     }
                 }
-        // pixshaft.com is our own backend, not a Pixiv host blocked by SNI. Sending it through
-        // Cronet used to bypass the 6/8-second OkHttp timeouts above (Cronet had its own 30-second
-        // wait) and also discarded OkHttp's connection retry behavior. Keep this client on the
-        // ordinary system DNS/TLS path regardless of Pixiv's "direct connect" preference.
+        // pixshaft.com / api.pixshaft.com are our own backend, but they are not exempt from the
+        // SNI block: measured on this network, a TCP+TLS ClientHello carrying either name is reset
+        // immediately, while the same Cloudflare IPs over HTTP/3 answer 200. So these clients ride
+        // Cronet exactly like app-api does — but only while direct connect is on, and only for the
+        // hosts in its allowlist (media.pixshaft.com is a Tencent COS bucket with no HTTP/3 and
+        // falls through to OkHttp untouched).
+        //
+        // The un-tagged Cronet deadline is 30s, far longer than the 6/8-second timeouts above, and
+        // it also discards OkHttp's connection retry. Both are handled where they belong: the
+        // interceptor above tags every request with this client's own total deadline, so a hung
+        // history call still fails in ~8s and the UI can fall back to the local DB.
+        applyDirectConnect(httpBuilder)
         return Retrofit.Builder()
             .baseUrl(baseUrl)
             .addConverterFactory(GsonConverterFactory.create())

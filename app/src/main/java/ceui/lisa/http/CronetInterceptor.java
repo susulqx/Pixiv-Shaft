@@ -48,10 +48,15 @@ public class CronetInterceptor implements Interceptor {
     private static final long REQUEST_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30L);
 
     /**
-     * Cronet direct-connect exists only to reach Pixiv-owned endpoints that are blocked by SNI.
-     * Keeping this as an exact allowlist is also defense in depth for callers: a client that
-     * accidentally installs the interceptor must never reroute pixshaft, a user proxy, or another
-     * third-party origin through Cronet and silently lose that client's OkHttp policy.
+     * Hosts that are unreachable over plain TCP+TLS here and only reachable through Cronet's QUIC
+     * path: Pixiv-owned endpoints, plus our own pixshaft backend (pixshaft.com / api.pixshaft.com —
+     * measured: TCP+TLS handshakes carrying either name are RST immediately, while the same IP over
+     * HTTP/3 answers 200). Keeping this an exact allowlist is also defense in depth: a client that
+     * accidentally installs the interceptor must never reroute a user proxy or another third-party
+     * origin through Cronet and silently lose that client's OkHttp policy.
+     *
+     * media.pixshaft.com is deliberately absent: it is a Tencent COS bucket with no HTTP/3, so the
+     * interceptor lets it fall through to the ordinary OkHttp path.
      */
     private static final Set<String> DIRECT_CONNECT_HOSTS = new HashSet<>(Arrays.asList(
             "app-api.pixiv.net",
@@ -59,12 +64,18 @@ public class CronetInterceptor implements Interceptor {
             "www.pixiv.net",
             "accounts.pixiv.net",
             "comic.pixiv.net",
-            "api.fanbox.cc"
+            "api.fanbox.cc",
+            "pixshaft.com",
+            "api.pixshaft.com"
     ));
 
     // Cloudflare Anycast IPs for Pixiv API — shared with HttpDns
     public static final String CF_IP_PRIMARY = "104.18.42.239";
     public static final String CF_IP_SECONDARY = "172.64.145.17";
+
+    // pixshaft.com / api.pixshaft.com 在 Cloudflare 上的任一 anycast 地址（取自其 SVCB 记录的
+    // ipv4hint）。与上面两个分开命名：它们是不同的 CF zone，变更节奏也不同。
+    public static final String PIXSHAFT_IP = "104.21.48.130";
 
     private static volatile CronetEngine sEngine;
     // 原生库加载失败只试一次：同一安装包里坏掉的 .so 不会自己好，每建一个 client 都重新 dlopen 没有意义。
@@ -77,9 +88,19 @@ public class CronetInterceptor implements Interceptor {
      */
     public static void installOn(OkHttpClient.Builder builder, Context context) {
         CronetEngine engine = getEngine(context);
-        if (engine != null) {
-            builder.addInterceptor(new CronetInterceptor(engine));
+        if (engine == null) {
+            return;
         }
+        // 派生客户端（newBuilder() 继承父 client 的拦截器）常常已经带着一份：
+        // MediaHttpTransport.apiClient 挂着它，pixshaft 的 history / auth / media 再从那里
+        // 派生出来。重复挂载不会出错（第一份就吃掉了请求），但两层同款轮询没必要，也让人以为
+        // 这里有两条链路。挂一次就够。
+        for (Interceptor existing : builder.interceptors()) {
+            if (existing instanceof CronetInterceptor) {
+                return;
+            }
+        }
+        builder.addInterceptor(new CronetInterceptor(engine));
     }
 
     private static CronetEngine getEngine(Context context) {
@@ -112,12 +133,35 @@ public class CronetInterceptor implements Interceptor {
         return REQUEST_TIMEOUT_MILLIS;
     }
 
+    /**
+     * Per-request override of the total deadline. OkHttp's connect/read/write timeouts never reach
+     * this interceptor — a request that leaves through Cronet is fully buffered here — so a caller
+     * that needs to wait longer than [REQUEST_TIMEOUT_MILLIS] (the cloud-translate route waits on an
+     * upstream LLM round trip) has to say so on the request itself.
+     */
+    public static final class TimeoutTag {
+        public final long timeoutMillis;
+
+        public TimeoutTag(long timeoutMillis) {
+            this.timeoutMillis = timeoutMillis;
+        }
+    }
+
+    public static TimeoutTag timeoutTag(long timeoutMillis) {
+        return new TimeoutTag(timeoutMillis);
+    }
+
     private static CronetEngine buildEngine(Context context) {
         // www.pixiv.net 与 API 域名同在 Cloudflare 上,同一组 anycast IP 按 SNI 分流即可命中
         // (issue #959:黑名单等网页端专属接口要在直连下可用)。
         String rules = "MAP app-api.pixiv.net " + CF_IP_PRIMARY + ","
                 + " MAP oauth.secure.pixiv.net " + CF_IP_PRIMARY + ","
-                + " MAP www.pixiv.net " + CF_IP_PRIMARY;
+                + " MAP www.pixiv.net " + CF_IP_PRIMARY + ","
+                // pixshaft.com 与 SNI 阻断同处一份名单，解析也跟着一起钉住：这条链路本来就不该
+                // 依赖本地 DNS 的答案。IP 取的是它自己 SVCB 记录里的 ipv4hint —— 同一台 CF 边缘，
+                // 实测 HTTP/3 稳定 200。
+                + " MAP pixshaft.com " + PIXSHAFT_IP + ","
+                + " MAP api.pixshaft.com " + PIXSHAFT_IP;
         String experimental = "{\"HostResolverRules\":{\"host_resolver_rules\":\"" + rules + "\"}}";
 
         File cacheDir = new File(context.getCacheDir(), "cronet");
@@ -130,6 +174,10 @@ public class CronetInterceptor implements Interceptor {
                 .addQuicHint("app-api.pixiv.net", 443, 443)
                 .addQuicHint("oauth.secure.pixiv.net", 443, 443)
                 .addQuicHint("www.pixiv.net", 443, 443)
+                // QUIC hint 是这条链路的启动条件，不是优化：Cronet 默认先发 TCP，收到 Alt-Svc
+                // 才升级到 QUIC，而这些域名的 TCP 握手一律被 RST —— 不给 hint 就永远升不上去。
+                .addQuicHint("pixshaft.com", 443, 443)
+                .addQuicHint("api.pixshaft.com", 443, 443)
                 .setExperimentalOptions(experimental)
                 .build();
     }
@@ -244,7 +292,8 @@ public class CronetInterceptor implements Interceptor {
         // change successful slow Pixiv/FANBOX/comic requests into failures. Polling the OkHttp call
         // still propagates Retrofit/coroutine cancellation instead of leaving Cronet running after
         // the screen has gone away.
-        long timeoutMillis = requestTimeoutMillis();
+        TimeoutTag timeoutTag = request.tag(TimeoutTag.class);
+        long timeoutMillis = timeoutTag != null ? timeoutTag.timeoutMillis : requestTimeoutMillis();
         long deadlineNanos = startTime + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         while (latch.getCount() != 0L) {
             if (chain.call().isCanceled()) {
