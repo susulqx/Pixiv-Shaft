@@ -76,6 +76,7 @@ Pixiv-Shaft 采用 **QUIC + No-SNI TLS 双通道** 策略，分别处理 API 请
 实现要点：
 - **Cronet 引擎**：嵌入 Chromium 的 `cronet-embedded` 库，启用 QUIC 并配置 QUIC Hint 加速协议发现
 - **DNS 绕过**：通过 `ExperimentalCronetEngine` 的 `HostResolverRules` 将 Pixiv 域名直接映射到 Cloudflare IP，绕过被污染的系统 DNS
+- **白名单、MAP、QUIC Hint 三份名单必须一一对应**。只进白名单的域名会拿到污染 IP 去连 QUIC，等于白升级；只进 MAP 的域名永远等不到拦截器。登录用的 `accounts.pixiv.net` 与漫画的 `comic.pixiv.net` 曾经就是这样漏在 MAP/hint 之外的（实测两者对同一批 CF 边缘的 HTTP/3 均返回 200）
 - **OkHttp 桥接**：自定义 `CronetInterceptor` 实现 OkHttp 的 `Interceptor` 接口，将 Retrofit 请求透明地转发到 Cronet 执行，无需改动现有 API 层代码
 
 ```

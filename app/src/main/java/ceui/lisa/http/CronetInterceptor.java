@@ -152,11 +152,19 @@ public class CronetInterceptor implements Interceptor {
     }
 
     private static CronetEngine buildEngine(Context context) {
-        // www.pixiv.net 与 API 域名同在 Cloudflare 上,同一组 anycast IP 按 SNI 分流即可命中
-        // (issue #959:黑名单等网页端专属接口要在直连下可用)。
+        // pixiv 的五个域名（app-api / oauth / www / accounts / comic）同在 Cloudflare 上，同一组
+        // anycast IP 按 SNI 分流即可命中（issue #959：黑名单等网页端专属接口要在直连下可用）。
+        // MAP 必须覆盖**每一个**白名单域名，否则该域名虽然进了 Cronet，解析却仍走系统 DNS ——
+        // 而墙内对 pixiv 域名的解析结果是污染的（实测 app-api 被解到 154.83.15.45），钉不上 IP 就
+        // 等于换了个地方失败。它们同在 Cloudflare，任何一个 anycast 边缘都能按 SNI 分流，
+        // 所以共用 CF_IP_PRIMARY。
         String rules = "MAP app-api.pixiv.net " + CF_IP_PRIMARY + ","
                 + " MAP oauth.secure.pixiv.net " + CF_IP_PRIMARY + ","
                 + " MAP www.pixiv.net " + CF_IP_PRIMARY + ","
+                // 登录（accounts）与漫画（comic）此前只在白名单里、没进 MAP/hint：Cronet 拿污染 IP
+                // 去连 QUIC，等于白升级。两者实测 HTTP/3 打到同一边缘均返回 200。
+                + " MAP accounts.pixiv.net " + CF_IP_PRIMARY + ","
+                + " MAP comic.pixiv.net " + CF_IP_PRIMARY + ","
                 // pixshaft.com 与 SNI 阻断同处一份名单，解析也跟着一起钉住：这条链路本来就不该
                 // 依赖本地 DNS 的答案。IP 取的是它自己 SVCB 记录里的 ipv4hint —— 同一台 CF 边缘，
                 // 实测 HTTP/3 稳定 200。
@@ -174,6 +182,8 @@ public class CronetInterceptor implements Interceptor {
                 .addQuicHint("app-api.pixiv.net", 443, 443)
                 .addQuicHint("oauth.secure.pixiv.net", 443, 443)
                 .addQuicHint("www.pixiv.net", 443, 443)
+                .addQuicHint("accounts.pixiv.net", 443, 443)
+                .addQuicHint("comic.pixiv.net", 443, 443)
                 // QUIC hint 是这条链路的启动条件，不是优化：Cronet 默认先发 TCP，收到 Alt-Svc
                 // 才升级到 QUIC，而这些域名的 TCP 握手一律被 RST —— 不给 hint 就永远升不上去。
                 .addQuicHint("pixshaft.com", 443, 443)
