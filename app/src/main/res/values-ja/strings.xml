@@ -164,7 +164,14 @@
     <string name="open_direct_connection">GFWをバイパス（中国大陸地区以外で使用しているか、既にGFWをバイパスしている場合はオフにしてください）</string>
     <string name="see_pixiv_ez">詳細はNotsfsssf/pix-ezviewerを参照してください。</string>
     <string name="use_secure_dns_title">セキュア DNS（DoH）</string>
-    <string name="use_secure_dns_summary">Cloudflare DoH で Pixiv ドメインを解決します。ローカル DNS が信頼できる場合はオフにできます</string>
+    <string name="use_secure_dns_summary">選択した DoH で Pixiv ドメインを解決します。ローカル DNS が信頼できる場合はオフにできます</string>
+    <string name="doh_mode_off">オフ（システム DNS を使用）</string>
+    <string name="doh_mode_cloudflare">Cloudflare (1.0.0.1)</string>
+    <string name="doh_mode_dnssb">DNS.SB (185.222.222.222)</string>
+    <string name="doh_mode_tencent">Tencent DNSPod (1.12.12.12)</string>
+    <string name="doh_mode_custom">カスタム DoH</string>
+    <string name="doh_custom_hint">https://your.doh/dns-query</string>
+    <string name="doh_custom_invalid">DoH アドレスが無効です。query や #fragment を含まない完全な http(s) アドレスを入力してください</string>
     <string name="show_original_image">オリジナルの画質で表示</string>
     <string name="delete_star_illust">フォロー新着でブックマーク済みの作品を非表示</string>
     <string name="filter_rank_bookmarked">ランキングでブックマーク済み作品を除外</string>

@@ -162,7 +162,14 @@
     <string name="open_direct_connection">Aktifkan koneksi langsung (dapat dimatikan jika Anda memakai proxy sendiri atau tidak berada di balik firewall)</string>
     <string name="see_pixiv_ez">Lihat Notsfsssf/Pix-EzViewer</string>
     <string name="use_secure_dns_title">DNS aman (DoH)</string>
-    <string name="use_secure_dns_summary">Resolusi domain Pixiv melalui Cloudflare DoH; dapat dimatikan jika DNS lokal sudah tepercaya</string>
+    <string name="use_secure_dns_summary">Resolusi domain Pixiv lewat DoH pilihan; matikan jika DNS lokal sudah tepercaya</string>
+    <string name="doh_mode_off">Nonaktif (DNS sistem)</string>
+    <string name="doh_mode_cloudflare">Cloudflare (1.0.0.1)</string>
+    <string name="doh_mode_dnssb">DNS.SB (185.222.222.222)</string>
+    <string name="doh_mode_tencent">Tencent DNSPod (1.12.12.12)</string>
+    <string name="doh_mode_custom">DoH kustom</string>
+    <string name="doh_custom_hint">https://your.doh/dns-query</string>
+    <string name="doh_custom_invalid">Alamat DoH tidak valid: harus alamat http(s) lengkap tanpa query atau #fragment</string>
     <string name="show_original_image">Tampilkan gambar asli di detail gambar</string>
     <string name="delete_star_illust">Feed: sembunyikan yang sudah di-bookmark</string>
     <string name="filter_rank_bookmarked">Peringkat: sembunyikan yang sudah di-bookmark</string>

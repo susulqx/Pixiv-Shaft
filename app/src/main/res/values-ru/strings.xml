@@ -164,7 +164,14 @@
     <string name="open_direct_connection">Обход блокировки</string>
     <string name="see_pixiv_ez">См. Notsfsssf / Pix-EzViewer</string>
     <string name="use_secure_dns_title">Защищённый DNS (DoH)</string>
-    <string name="use_secure_dns_summary">Разрешать домены Pixiv через Cloudflare DoH; отключите, если локальному DNS уже можно доверять</string>
+    <string name="use_secure_dns_summary">Разрешать домены Pixiv через выбранный DoH; отключите, если локальному DNS уже можно доверять</string>
+    <string name="doh_mode_off">Выключено (системный DNS)</string>
+    <string name="doh_mode_cloudflare">Cloudflare (1.0.0.1)</string>
+    <string name="doh_mode_dnssb">DNS.SB (185.222.222.222)</string>
+    <string name="doh_mode_tencent">Tencent DNSPod (1.12.12.12)</string>
+    <string name="doh_mode_custom">Свой DoH</string>
+    <string name="doh_custom_hint">https://your.doh/dns-query</string>
+    <string name="doh_custom_invalid">Неверный адрес DoH: нужен полный http(s)-адрес без query и #fragment</string>
     <string name="show_original_image">Использовать оригинал изображения</string>
     <string name="delete_star_illust">Скрывать произведения из закладок в ленте подписок</string>
     <string name="filter_rank_bookmarked">Исключать из рейтинга уже добавленные в закладки работы</string>

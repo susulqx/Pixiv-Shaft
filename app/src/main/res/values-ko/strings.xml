@@ -164,7 +164,14 @@
     <string name="open_direct_connection">직통 으로 오픈 (자체 에이전트 또는 벽 밖에서 닫 을 수 있 음)</string>
     <string name="see_pixiv_ez">상세 한 내용 은 Notsfsssf / Pix - EzViewer 를 참조 합 니 다.</string>
     <string name="use_secure_dns_title">보안 DNS (DoH)</string>
-    <string name="use_secure_dns_summary">Cloudflare DoH로 Pixiv 도메인을 확인합니다. 로컬 DNS를 이미 신뢰할 수 있다면 끄세요</string>
+    <string name="use_secure_dns_summary">선택한 DoH로 Pixiv 도메인을 확인합니다. 로컬 DNS를 이미 신뢰할 수 있다면 끄세요</string>
+    <string name="doh_mode_off">사용 안 함 (시스템 DNS)</string>
+    <string name="doh_mode_cloudflare">Cloudflare (1.0.0.1)</string>
+    <string name="doh_mode_dnssb">DNS.SB (185.222.222.222)</string>
+    <string name="doh_mode_tencent">Tencent DNSPod (1.12.12.12)</string>
+    <string name="doh_mode_custom">사용자 지정 DoH</string>
+    <string name="doh_custom_hint">https://your.doh/dns-query</string>
+    <string name="doh_custom_invalid">DoH 주소가 올바르지 않습니다. query나 #fragment가 없는 완전한 http(s) 주소여야 합니다</string>
     <string name="show_original_image">사진 상세 전시 원 도</string>
     <string name="delete_star_illust">팔로우 피드에서 북마크한 작품 숨기기</string>
     <string name="filter_rank_bookmarked">랭킹에서 북마크한 작품 제외</string>

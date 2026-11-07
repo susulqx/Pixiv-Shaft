@@ -164,7 +164,14 @@
     <string name="open_direct_connection">開啟直連（自行代理或在牆外，可以關閉）</string>
     <string name="see_pixiv_ez">詳見 Notsfsssf/Pix-EzViewer</string>
     <string name="use_secure_dns_title">安全 DNS（DoH）</string>
-    <string name="use_secure_dns_summary">透過 Cloudflare DoH 解析 Pixiv 網域；本機 DNS 已可信時可關閉</string>
+    <string name="use_secure_dns_summary">透過所選 DoH 解析 Pixiv 網域；本機 DNS 已可信時可關閉</string>
+    <string name="doh_mode_off">關閉（走系統 DNS）</string>
+    <string name="doh_mode_cloudflare">Cloudflare (1.0.0.1)</string>
+    <string name="doh_mode_dnssb">DNS.SB (185.222.222.222)</string>
+    <string name="doh_mode_tencent">騰訊 DNSPod (1.12.12.12)</string>
+    <string name="doh_mode_custom">自訂 DoH</string>
+    <string name="doh_custom_hint">https://your.doh/dns-query</string>
+    <string name="doh_custom_invalid">DoH 位址無效：需為 http(s) 完整位址，且不能帶 query 或 #fragment</string>
     <string name="show_original_image">圖片詳情展示原圖</string>
     <string name="delete_star_illust">動態過濾已收藏</string>
     <string name="filter_rank_bookmarked">排行榜過濾已收藏</string>

@@ -164,7 +164,14 @@
     <string name="open_direct_connection">GFW\'yi atla (Hızlı bağlantı)</string>
     <string name="see_pixiv_ez">Notsfsssf / Pix-EzViewer\'a bak</string>
     <string name="use_secure_dns_title">Güvenli DNS (DoH)</string>
-    <string name="use_secure_dns_summary">Pixiv alan adlarını Cloudflare DoH ile çöz; yerel DNS\'iniz zaten güvenliyse kapatın</string>
+    <string name="use_secure_dns_summary">Pixiv alan adlarını seçilen DoH ile çöz; yerel DNS\'iniz zaten güvenliyse kapatın</string>
+    <string name="doh_mode_off">Kapalı (sistem DNS)</string>
+    <string name="doh_mode_cloudflare">Cloudflare (1.0.0.1)</string>
+    <string name="doh_mode_dnssb">DNS.SB (185.222.222.222)</string>
+    <string name="doh_mode_tencent">Tencent DNSPod (1.12.12.12)</string>
+    <string name="doh_mode_custom">Özel DoH</string>
+    <string name="doh_custom_hint">https://your.doh/dns-query</string>
+    <string name="doh_custom_invalid">Geçersiz DoH adresi: query veya #fragment içermeyen tam bir http(s) adresi olmalı</string>
     <string name="show_original_image">Orijinal resmi kullan</string>
     <string name="delete_star_illust">Takip akışında favorilere eklenen eserleri gizle</string>
     <string name="filter_rank_bookmarked">Sıralamada yer imlerine eklenmiş eserleri filtrele</string>
